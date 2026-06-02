@@ -51,7 +51,7 @@
   /* ===================== THE GRAPHIC ===================== */
   #poster{width:var(--poster-w);background:var(--bg);padding:28px 28px 22px}
   .head{text-align:center;margin:6px 0 20px}
-  .head h1{color:var(--title);font-weight:700;font-size:45px;line-height:1.04;letter-spacing:-.3px}
+  .head h1{color:var(--title);font-weight:700;font-size:45px;line-height:1.04;letter-spacing:-.3px;white-space:nowrap}
   .head p{color:var(--subtitle);font-weight:400;font-size:21px;margin-top:8px}
   .grows{display:flex;flex-direction:column;gap:9px}
   .grow{position:relative;display:flex;align-items:stretch;height:116px;border:3px solid #555;border-radius:3px;overflow:hidden}
@@ -419,6 +419,7 @@ function render(){
   foot.innerHTML='<img class="hhlogo" src="'+LOGO_URI+'" alt="HoopsHype"><div class="credit"></div>';
   foot.querySelector(".credit").textContent=$("inFooter").value; p.appendChild(foot);
   $("dl").disabled=false; meta.textContent=rows.length+" rows - 1080px -> "+(1080*SCALE)+"px PNG";
+  fitTitle();
   banner.style.display="none"; banner.className="banner";
   if(!INDEX_OK){ banner.style.display="block"; banner.innerHTML="Headshots/logos could not load from <b>raw.githubusercontent.com</b>. If this is the inline preview, that is expected: download the file and open it in your browser."; }
   renderMissing(missing, rows);
@@ -475,13 +476,45 @@ async function loadIndex(){
     INDEX_OK=true;
   }catch(e){ INDEX_OK=false; }
 }
-$("gen").addEventListener("click",render);
+/* shrink the headline so it always fits on one line */
+function fitTitle(){
+  const h=document.querySelector("#poster .head h1"); if(!h) return;
+  const max=45, min=22; let fs=max; h.style.fontSize=fs+"px";
+  const avail=h.parentElement.clientWidth;
+  while(fs>min && h.scrollWidth>avail){ fs-=1; h.style.fontSize=fs+"px"; }
+}
+/* convert an external SVG url to a PNG data URL so html2canvas can render it */
+const _logoPngCache={};
+async function svgUrlToPng(url,size){
+  if(_logoPngCache[url]) return _logoPngCache[url];
+  const resp=await fetch(url,{mode:"cors"}); let svg=await resp.text();
+  if(!/<svg[^>]*\bwidth=/.test(svg)){
+    const m=svg.match(/viewBox=["']([\d.\s-]+)["']/); let w=size,hh=size;
+    if(m){ const p=m[1].trim().split(/\s+/); w=parseFloat(p[2])||size; hh=parseFloat(p[3])||size; }
+    svg=svg.replace(/<svg/,'<svg width="'+w+'" height="'+hh+'"');
+  }
+  const blob=new Blob([svg],{type:"image/svg+xml"}); const burl=URL.createObjectURL(blob);
+  const img=await new Promise((res,rej)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=()=>rej(new Error("svg load")); im.src=burl; });
+  const cv=document.createElement("canvas"); cv.width=size; cv.height=size;
+  const ctx=cv.getContext("2d");
+  const iw=img.naturalWidth||size, ih=img.naturalHeight||size, s=Math.min(size/iw,size/ih);
+  const dw=iw*s, dh=ih*s; ctx.drawImage(img,(size-dw)/2,(size-dh)/2,dw,dh);
+  URL.revokeObjectURL(burl);
+  const out=cv.toDataURL("image/png"); _logoPngCache[url]=out; return out;
+}
+$("gen").addEventListener("click",()=>{ render(); fitTitle(); });
 $("dl").addEventListener("click",async()=>{
   const btn=$("dl"); btn.disabled=true; btn.textContent="Rendering...";
   await Promise.all([...document.querySelectorAll("#poster img")].map(i=>i.complete?Promise.resolve():new Promise(r=>{i.onload=i.onerror=r;})));
+  // swap SVG logos for PNG data URLs so html2canvas can render them; restore after
+  const _logos=[...document.querySelectorAll("#poster img.logo")];
+  const _orig=_logos.map(im=>im.getAttribute("src"));
+  await Promise.all(_logos.map(async im=>{ const u=im.getAttribute("src"); if(u && /\.svg(\?|$)/i.test(u)){ try{ im.src=await svgUrlToPng(u,200); }catch(e){} } }));
+  await Promise.all(_logos.map(im=>im.complete?Promise.resolve():new Promise(r=>{im.onload=im.onerror=r;})));
   try{ const c=await html2canvas($("poster"),{scale:SCALE,useCORS:true,backgroundColor:"#232323",logging:false});
     const a=document.createElement("a"); a.download="hoopshype-graphic.png"; a.href=c.toDataURL("image/png"); a.click();
   }catch(e){ alert("PNG export failed ("+e.message+")."); }
+  _logos.forEach((im,i)=>{ if(_orig[i]!=null) im.src=_orig[i]; });
   btn.disabled=false; btn.textContent="Download PNG";
 });
 $("scaleBtn").addEventListener("click",()=>{ SCALE=SCALE===2?3:(SCALE===3?1:2); $("scaleBtn").textContent="Scale: "+SCALE+"x"; if(!$("dl").disabled) render(); });
