@@ -397,9 +397,10 @@ function resolveRow(row,missing){
     else if(LEGEND_TEAMS[norm(row.name)]){ abbrev=LEGEND_TEAMS[norm(row.name)]; teamObj=TEAM_IDX[abbrev]||null; }
   }
   // headshot precedence: explicit url > saved upload (persisted) > this-session upload > repo > silhouette
+  row._fromSaved=false;
   if(row.img) row._shot=row.img;
-  else if(SAVED_SHOTS[norm(row.name)]) row._shot=SAVED_SHOTS[norm(row.name)];
-  else if(MANUAL_PHOTOS[norm(row.name)]) row._shot=MANUAL_PHOTOS[norm(row.name)];
+  else if(SAVED_SHOTS[norm(row.name)]){ row._shot=SAVED_SHOTS[norm(row.name)]; row._fromSaved=true; }
+  else if(MANUAL_PHOTOS[norm(row.name)]){ row._shot=MANUAL_PHOTOS[norm(row.name)]; row._fromSaved=true; }
   else if(player) row._shot=RAW+"/players/headshots/face/"+player.headshot.filename;
   else { row._shot=SILHOUETTE; missing.push(row.name); }
   row._logo = teamObj ? RAW+"/teams/logos/current/svg/"+teamObj.team_id+".svg" : null;
@@ -433,19 +434,24 @@ function render(){
   fitTitle();
   banner.style.display="none"; banner.className="banner";
   if(!INDEX_OK){ banner.style.display="block"; banner.innerHTML="Headshots/logos could not load from <b>raw.githubusercontent.com</b>. If this is the inline preview, that is expected: download the file and open it in your browser."; }
-  renderMissing(missing, rows);
+  // players the panel should let you manage: those with no headshot (missing) PLUS those
+  // already using a saved upload (so you can re-cut or replace them even though they're not "missing")
+  const editable=[];
+  rows.forEach(row=>{ if(missing.includes(row.name)||row._fromSaved){ if(!editable.includes(row.name)) editable.push(row.name); } });
+  renderMissing(missing, rows, editable);
 }
 
-/* ---------- upload-your-own panel for players with no headshot ---------- */
-function renderMissing(missing, rows){
+/* ---------- upload / manage panel: missing players AND ones using a saved upload ---------- */
+function renderMissing(missing, rows, editable){
   const box=$("missingBox");
-  if(!missing.length){ box.style.display="none"; box.innerHTML=""; return; }
+  const list=editable||missing;
+  if(!list.length){ box.style.display="none"; box.innerHTML=""; return; }
   box.style.display="block";
-  let html='<h2>Add photos for missing players</h2>'+
-    '<p class="hint">These have no headshot in the repo (usually retired players). Upload any photo and the background is removed automatically to match the NBA cutout look, then it is <b>saved on this browser</b> and reloads next time. First upload downloads a one-time model, so it can take a few seconds. Untick the box below to keep photos exactly as uploaded. To also set a team logo and bar color, add <code>| TEAM</code> after the number in the list above, e.g. <code>Kobe Bryant | 8 | LAL</code>. Many legends already get a default team automatically.</p>'+
+  let html='<h2>Player photos</h2>'+
+    '<p class="hint">Players with no headshot in the repo (usually retired) plus any you have uploaded. Upload any photo and the background is removed automatically to match the NBA cutout look, then it is <b>saved on this browser</b> and reloads next time. Already-saved players have a <b>Remove background</b> button that re-cuts and re-squares the stored photo. First cutout downloads a one-time model, so it can take a few seconds. Untick the box below to keep photos exactly as uploaded. To also set a team logo and bar color, add <code>| TEAM</code> after the number in the list above, e.g. <code>Kobe Bryant | 8 | LAL</code>.</p>'+
     '<div class="row-actions" style="margin-bottom:10px;align-items:center;gap:14px"><label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;color:#cfd2d6"><input type="checkbox" id="autoCut"> Remove background automatically (recommended)</label><button class="btn ghost" id="clearSaved">Clear saved photos</button></div>'+
     '<div class="misslist">';
-  missing.forEach(name=>{
+  list.forEach(name=>{
     const id="up_"+norm(name).replace(/[^a-z0-9]/g,"_");
     const saved=!!SAVED_SHOTS[norm(name)];
     html+='<div class="missrow"><span class="missname">'+name+(saved?' <span style="color:#8fd18f">&#10003; saved</span>':'')+'</span>'+
