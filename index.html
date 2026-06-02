@@ -239,8 +239,19 @@ function ensureBgLib(){
 function blobToDataURL(b){ return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=()=>rej(fr.error); fr.readAsDataURL(b); }); }
 async function cutoutToDataURL(fileOrBlob){
   const lib=await ensureBgLib();
-  const out=await lib.removeBackground(fileOrBlob);   // transparent PNG Blob
-  return await blobToDataURL(out);
+  const out=await lib.removeBackground(fileOrBlob);   // transparent PNG Blob, cropped tight to the subject
+  const url=await blobToDataURL(out);
+  // pad onto a square transparent canvas, anchored to the top, so a tall/narrow cutout
+  // doesn't get zoomed by object-fit:cover the way a repo head-and-shoulders square would not
+  try{
+    const im=await fileToImage(url);
+    const w=im.naturalWidth||im.width, h=im.naturalHeight||im.height;
+    const side=Math.max(w,h);
+    const cv=document.createElement("canvas"); cv.width=side; cv.height=side;
+    const ctx=cv.getContext("2d");
+    ctx.drawImage(im,(side-w)/2,0,w,h);   // horizontally centered, top-aligned (keeps the head in frame)
+    return cv.toDataURL("image/png");
+  }catch(e){ return url; }   // if padding fails, fall back to the raw cutout
 }
 function fileToImage(srcUrl){ return new Promise((res,rej)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=()=>rej(new Error("decode failed")); im.src=srcUrl; }); }
 async function normalizeToPng(file){
@@ -438,6 +449,7 @@ function renderMissing(missing, rows){
     const id="up_"+norm(name).replace(/[^a-z0-9]/g,"_");
     const saved=!!SAVED_SHOTS[norm(name)];
     html+='<div class="missrow"><span class="missname">'+name+(saved?' <span style="color:#8fd18f">&#10003; saved</span>':'')+'</span>'+
+      (saved?'<button class="btn ghost recutbtn" data-for="'+name+'">Remove background</button>':'')+
       '<button class="btn ghost missbtn" data-for="'+name+'" data-id="'+id+'">'+(saved?"Replace photo":"Upload photo")+'</button>'+
       '<input type="file" accept="image/*" id="'+id+'" data-for="'+name+'" style="display:none"></div>';
   });
@@ -446,6 +458,19 @@ function renderMissing(missing, rows){
   const ac=$("autoCut"); ac.checked=AUTO_CUTOUT; ac.addEventListener("change",()=>{ AUTO_CUTOUT=ac.checked; });
   $("clearSaved").addEventListener("click",async()=>{ if(confirm("Remove all saved uploaded photos from this browser?")){ await idbClearAll(); render(); } });
   box.querySelectorAll(".missbtn").forEach(b=>b.addEventListener("click",()=>$(b.dataset.id).click()));
+  box.querySelectorAll(".recutbtn").forEach(b=>b.addEventListener("click",async()=>{
+    const key=norm(b.dataset.for); const cur=SAVED_SHOTS[key]; if(!cur) return;
+    b.disabled=true; const old=b.textContent; b.textContent="Removing background…";
+    try{
+      const resp=await fetch(cur); const blob=await resp.blob();
+      const url=await cutoutToDataURL(blob);
+      SAVED_SHOTS[key]=url; await idbPut(key,b.dataset.for,url); render();
+    }catch(err){
+      console.warn("Re-cut failed:",err);
+      alert("Couldn't remove the background for "+b.dataset.for+" (the model may still be downloading, or the image was tricky). Nothing was changed. Try again, or re-upload a clearer photo.");
+      b.disabled=false; b.textContent=old;
+    }
+  }));
   box.querySelectorAll('input[type=file]').forEach(inp=>inp.addEventListener("change",async e=>{
     const f=e.target.files[0]; if(!f) return;
     const key=norm(inp.dataset.for);
@@ -521,7 +546,7 @@ $("scaleBtn").addEventListener("click",()=>{ SCALE=SCALE===2?3:(SCALE===3?1:2); 
 
 /* boot */
 $("inTitle").value="Top scorers, 2025-26 season (TEMPLATE PREVIEW)";
-$("inSub").value="Replace this with your own data. Numbers are placeholders.";
+$("inSub").setAttribute("placeholder","Optional subline, e.g. Regular season, through April 2026");
 $("inRows").value=["Shai Gilgeous-Alexander | 0000","Nikola Jokic | 0000","Luka Doncic | 0000","Giannis Antetokounmpo | 0000","Anthony Edwards | 0000","Jayson Tatum | 0000","Victor Wembanyama | 0000","Devin Booker | 0000","Stephen Curry | 0000","LeBron James | 0000"].join("\n");
 Promise.all([loadIndex(), idbLoadAll()]).then(render);
 </script>
