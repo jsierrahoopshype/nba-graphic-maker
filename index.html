@@ -247,33 +247,46 @@ function ensureBgLib(){
 function blobToDataURL(b){ return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=()=>rej(fr.error); fr.readAsDataURL(b); }); }
 async function cutoutToDataURL(fileOrBlob){
   const lib=await ensureBgLib();
-  const out=await lib.removeBackground(fileOrBlob);   // transparent PNG Blob, with variable transparent margins
-  const url=await blobToDataURL(out);
+  const out=await lib.removeBackground(fileOrBlob);   // transparent PNG Blob; framing happens later in frameShot()
+  return await blobToDataURL(out);
+}
+/* ---------- one framing rule for every row (repo headshots AND uploads) ----------
+   Trims transparent margins to the subject's bounding box, then fills a square
+   bottom-anchored and horizontally centered, matching the repo headshots
+   (which fill ~100% width / ~93% height with the shoulders at the bottom edge).
+   Cached by source URL so it only runs once per image. */
+const _frameCache={};
+async function frameShot(srcUrl){
+  if(srcUrl===SILHOUETTE) return srcUrl;            // leave the fallback silhouette alone
+  if(_frameCache[srcUrl]) return _frameCache[srcUrl];
+  const im=await fileToImage(srcUrl);
+  const W=im.naturalWidth||im.width, H=im.naturalHeight||im.height;
+  if(!W||!H) return srcUrl;
+  const sc=document.createElement("canvas"); sc.width=W; sc.height=H;
+  const sx=sc.getContext("2d"); sx.drawImage(im,0,0);
+  let minX=W,minY=H,maxX=0,maxY=0,found=false;
   try{
-    const im=await fileToImage(url);
-    const W=im.naturalWidth||im.width, H=im.naturalHeight||im.height;
-    // draw to a scratch canvas and read alpha to find the player's actual bounding box,
-    // so loose cutouts (lots of transparent space) and tight ones end up framed identically
-    const sc=document.createElement("canvas"); sc.width=W; sc.height=H;
-    const sx=sc.getContext("2d"); sx.drawImage(im,0,0);
-    let minX=W,minY=H,maxX=0,maxY=0,found=false;
-    try{
-      const d=sx.getImageData(0,0,W,H).data;
-      for(let y=0;y<H;y++){ for(let x=0;x<W;x++){ if(d[(y*W+x)*4+3]>16){ found=true; if(x<minX)minX=x; if(x>maxX)maxX=x; if(y<minY)minY=y; if(y>maxY)maxY=y; } } }
-    }catch(e){ found=false; }   // getImageData can throw on tainted canvas; fall back below
-    let bx=0,by=0,bw=W,bh=H;
-    if(found && maxX>=minX && maxY>=minY){ bx=minX; by=minY; bw=maxX-minX+1; bh=maxY-minY+1; }
-    // square canvas sized to the larger trimmed dimension plus a small even margin
-    const content=Math.max(bw,bh);
-    const margin=Math.round(content*0.08);
-    const side=content+margin*2;
-    const cv=document.createElement("canvas"); cv.width=side; cv.height=side;
-    const ctx=cv.getContext("2d");
-    // horizontally center the trimmed player; anchor near the top so the head stays in frame
-    const dx=(side-bw)/2, dy=margin;
-    ctx.drawImage(im, bx,by,bw,bh, dx,dy,bw,bh);
-    return cv.toDataURL("image/png");
-  }catch(e){ return url; }   // if framing fails for any reason, fall back to the raw cutout
+    const d=sx.getImageData(0,0,W,H).data;
+    for(let y=0;y<H;y++){ const r=y*W; for(let x=0;x<W;x++){ if(d[(r+x)*4+3]>16){ found=true; if(x<minX)minX=x; if(x>maxX)maxX=x; if(y<minY)minY=y; if(y>maxY)maxY=y; } } }
+  }catch(e){ return srcUrl; }                       // tainted canvas (CORS): leave the image as-is
+  let bx=0,by=0,bw=W,bh=H;
+  if(found && maxX>=minX && maxY>=minY){ bx=minX; by=minY; bw=maxX-minX+1; bh=maxY-minY+1; }
+  const side=Math.max(bw,bh);                        // larger side fills the square (no shrinking margin)
+  const cv=document.createElement("canvas"); cv.width=side; cv.height=side;
+  const ctx=cv.getContext("2d");
+  const dx=Math.round((side-bw)/2);                  // horizontally centered
+  const dy=side-bh;                                  // bottom-anchored (shoulders to the bottom edge)
+  ctx.drawImage(im, bx,by,bw,bh, dx,dy,bw,bh);
+  const out=cv.toDataURL("image/png"); _frameCache[srcUrl]=out; return out;
+}
+/* reframe every shot in the poster through the single rule above */
+async function reframeShots(){
+  const imgs=[...document.querySelectorAll("#poster img.shot")];
+  await Promise.all(imgs.map(async im=>{
+    if(im.dataset.framed==="1") return;
+    const orig=im.getAttribute("src");
+    try{ const framed=await frameShot(orig); if(framed!==orig){ im.src=framed; } im.dataset.framed="1"; }catch(e){}
+  }));
 }
 function fileToImage(srcUrl){ return new Promise((res,rej)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=()=>rej(new Error("decode failed")); im.src=srcUrl; }); }
 async function normalizeToPng(file){
@@ -454,6 +467,7 @@ function render(){
   foot.querySelector(".credit").textContent=$("inFooter").value; p.appendChild(foot);
   $("dl").disabled=false; meta.textContent=rows.length+" rows - 1080px -> "+(1080*SCALE)+"px PNG";
   fitTitle();
+  reframeShots();
   banner.style.display="none"; banner.className="banner";
   if(!INDEX_OK){ banner.style.display="block"; banner.innerHTML="Headshots/logos could not load from <b>raw.githubusercontent.com</b>. If this is the inline preview, that is expected: download the file and open it in your browser."; }
   // players the panel should let you manage: those with no headshot (missing) PLUS those
@@ -558,6 +572,7 @@ async function svgUrlToPng(url,size){
 $("gen").addEventListener("click",()=>{ render(); fitTitle(); });
 $("dl").addEventListener("click",async()=>{
   const btn=$("dl"); btn.disabled=true; btn.textContent="Rendering...";
+  await reframeShots();   // ensure every shot is framed by the single rule before exporting
   await Promise.all([...document.querySelectorAll("#poster img")].map(i=>i.complete?Promise.resolve():new Promise(r=>{i.onload=i.onerror=r;})));
   // swap SVG logos for PNG data URLs so html2canvas can render them; restore after
   const _logos=[...document.querySelectorAll("#poster img.logo")];
@@ -573,7 +588,7 @@ $("dl").addEventListener("click",async()=>{
 $("scaleBtn").addEventListener("click",()=>{ SCALE=SCALE===2?3:(SCALE===3?1:2); $("scaleBtn").textContent="Scale: "+SCALE+"x"; if(!$("dl").disabled) render(); });
 
 /* boot */
-$("inTitle").value="Top scorers, 2025-26 season (TEMPLATE PREVIEW)";
+$("inTitle").setAttribute("placeholder","Headline, e.g. NBA stars: Most playoff series won without home-court advantage");
 $("inSub").setAttribute("placeholder","Optional subline, e.g. Regular season, through April 2026");
 $("inRows").value=["Shai Gilgeous-Alexander | 0000","Nikola Jokic | 0000","Luka Doncic | 0000","Giannis Antetokounmpo | 0000","Anthony Edwards | 0000","Jayson Tatum | 0000","Victor Wembanyama | 0000","Devin Booker | 0000","Stephen Curry | 0000","LeBron James | 0000"].join("\n");
 Promise.all([loadIndex(), idbLoadAll()]).then(render);
