@@ -523,6 +523,7 @@ function renderMissing(missing, rows, editable){
     const saved=!!SAVED_SHOTS[norm(name)];
     html+='<div class="missrow"><span class="missname">'+name+(saved?' <span style="color:#8fd18f">&#10003; saved</span>':'')+'</span>'+
       (saved?'<button class="btn ghost recutbtn" data-for="'+name+'">Remove background</button>':'')+
+      (saved?'<button class="btn ghost delbtn" data-for="'+name+'">Delete photo</button>':'')+
       '<button class="btn ghost missbtn" data-for="'+name+'" data-id="'+id+'">'+(saved?"Replace photo":"Upload photo")+'</button>'+
       '<input type="file" accept="image/*" id="'+id+'" data-for="'+name+'" style="display:none"></div>';
   });
@@ -531,6 +532,13 @@ function renderMissing(missing, rows, editable){
   const ac=$("autoCut"); ac.checked=AUTO_CUTOUT; ac.addEventListener("change",()=>{ AUTO_CUTOUT=ac.checked; });
   $("clearSaved").addEventListener("click",async()=>{ if(confirm("Remove all saved uploaded photos from this browser?")){ await idbClearAll(); render(); } });
   box.querySelectorAll(".missbtn").forEach(b=>b.addEventListener("click",()=>$(b.dataset.id).click()));
+  box.querySelectorAll(".delbtn").forEach(b=>b.addEventListener("click",async()=>{
+    const key=norm(b.dataset.for);
+    if(!confirm("Delete the saved photo for "+b.dataset.for+"? If he has an official headshot in the repo, that will be used instead.")) return;
+    delete SAVED_SHOTS[key]; delete MANUAL_PHOTOS[key];
+    await idbDelete(key);
+    render();
+  }));
   box.querySelectorAll(".recutbtn").forEach(b=>b.addEventListener("click",async()=>{
     const key=norm(b.dataset.for); const cur=SAVED_SHOTS[key]; if(!cur) return;
     b.disabled=true; const old=b.textContent; b.textContent="Removing background…";
@@ -569,7 +577,13 @@ async function loadIndex(){
     const [pj,tj]=await Promise.all([
       fetch(RAW+"/players/metadata/players.json").then(r=>{if(!r.ok)throw 0;return r.json();}),
       fetch(RAW+"/teams/metadata/teams.json").then(r=>{if(!r.ok)throw 0;return r.json();})]);
-    pj.players.forEach(p=>{PLAYER_IDX[norm(p.full_name)]=p;});
+    pj.players.forEach(p=>{
+      PLAYER_IDX[norm(p.full_name)]=p;
+      // also index without generational suffixes so "Jimmy Butler" finds "Jimmy Butler III",
+      // "Tim Hardaway" finds "Tim Hardaway Jr.", etc. (never overwrite an exact-name entry)
+      const alias=norm(p.full_name).replace(/\s+(jr|sr|ii|iii|iv|v)\.?$/,"");
+      if(alias!==norm(p.full_name) && !PLAYER_IDX[alias]) PLAYER_IDX[alias]=p;
+    });
     tj.forEach(t=>{TEAM_IDX[t.abbrev]=t;TEAM_IDX[norm(t.full_name)]=t;});
     INDEX_OK=true;
   }catch(e){ INDEX_OK=false; }
