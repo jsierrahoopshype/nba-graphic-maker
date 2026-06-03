@@ -271,6 +271,11 @@ async function frameShot(srcUrl){
   }catch(e){ return srcUrl; }                       // tainted canvas (CORS): leave the image as-is
   let bx=0,by=0,bw=W,bh=H;
   if(found && maxX>=minX && maxY>=minY){ bx=minX; by=minY; bw=maxX-minX+1; bh=maxY-minY+1; }
+  // crop to the NBA head-and-shoulders proportion (LeBron's repo crop is height ~0.93x width):
+  // cap the subject height at 0.95x its width, measured from the TOP, so heads come out the
+  // same size whether the source was a tight headshot or a half-body cutout
+  const capH=Math.round(bw*0.95);
+  if(bh>capH) bh=capH;
   const side=Math.max(bw,bh);                        // larger side fills the square (no shrinking margin)
   const cv=document.createElement("canvas"); cv.width=side; cv.height=side;
   const ctx=cv.getContext("2d");
