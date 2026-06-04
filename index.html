@@ -13,7 +13,7 @@
 }
 </script>
 <style>
-  :root{ --bg:#232323; --title:#E9C77E; --subtitle:#9a9a9a; --name:#fff; --rowsub:#cfcfcf; --footer:#9a9a9a; --poster-w:1080px; }
+  :root{ --bg:#2b2b2b; --title:#E9C77E; --subtitle:#9a9a9a; --name:#fff; --rowsub:#cfcfcf; --footer:#9a9a9a; --poster-w:1080px; }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:#141414;color:#eee;font-family:Helvetica,Arial,sans-serif;display:flex;flex-direction:column;align-items:center;padding:22px 12px 64px}
 
@@ -57,20 +57,20 @@
   .missbtn{padding:7px 13px;font-size:13px}
 
   /* ===================== THE GRAPHIC ===================== */
-  #poster{width:var(--poster-w);background:var(--bg);padding:28px 28px 22px}
+  #poster{width:var(--poster-w);background:var(--bg);padding:14px 10px 14px}
   .head{text-align:center;margin:6px 0 20px}
   .head h1{color:var(--title);font-weight:700;font-size:45px;line-height:1.04;letter-spacing:-.3px;white-space:nowrap}
   .head p{color:var(--subtitle);font-weight:400;font-size:21px;margin-top:8px}
-  .grows{display:flex;flex-direction:column;gap:9px}
-  .grow{position:relative;display:flex;align-items:stretch;height:116px;border:3px solid #555;border-radius:3px;overflow:hidden}
+  .grows{display:flex;flex-direction:column;gap:6px}
+  .grow{position:relative;display:flex;align-items:stretch;height:122px;border:3px solid #555;border-radius:3px;overflow:hidden}
   .media{position:relative;flex:0 0 236px}
-  .logo{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:92px;height:92px;object-fit:contain;filter:drop-shadow(0 2px 3px rgba(0,0,0,.45))}
-  .shot{position:absolute;left:112px;bottom:0;width:110px;height:110px;object-fit:cover;object-position:top center}
+  .logo{position:absolute;left:8px;top:50%;transform:translateY(-50%);width:106px;height:106px;object-fit:contain;filter:drop-shadow(0 2px 3px rgba(0,0,0,.45))}
+  .shot{position:absolute;left:120px;bottom:0;width:114px;height:116px;object-fit:cover;object-position:top center}
   .info{flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;padding:0 18px;min-width:0}
   .info .name{color:var(--name);font-weight:700;font-size:44px;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 2px 4px rgba(0,0,0,.4)}
   .info .sub{color:var(--rowsub);font-weight:400;font-size:22px;margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .num{flex:0 0 206px;display:flex;align-items:center;justify-content:center}
-  .num span{font-weight:700;font-size:58px;color:#fff;letter-spacing:-1px;-webkit-text-stroke:2.5px rgba(0,0,0,.6);paint-order:stroke fill;text-shadow:0 2px 4px rgba(0,0,0,.4)}
+  .num{flex:0 0 172px;display:flex;align-items:center;justify-content:center}
+  .num span{font-weight:700;font-size:64px;color:#fff;letter-spacing:-1px;-webkit-text-stroke:2.5px rgba(0,0,0,.6);paint-order:stroke fill;text-shadow:0 2px 4px rgba(0,0,0,.4)}
   .foot{display:flex;align-items:center;justify-content:space-between;margin-top:16px;padding:2px 2px 0}
   .foot img.hhlogo{height:30px;width:auto;display:block}
   .foot .credit{color:var(--footer);font-weight:600;font-size:18px}
@@ -168,6 +168,8 @@ const RAW = "https://raw.githubusercontent.com/jsierrahoopshype/nba-headshots/" 
 const SILHOUETTE = RAW + "/fallbacks/player_silhouette.svg";
 
 const TEAM_COLORS = {ATL:"#E03A3E",BOS:"#007A33",BKN:"#000000",CHA:"#1D1160",CHI:"#CE1141",CLE:"#860038",DAL:"#00538C",DEN:"#0E2240",DET:"#C8102E",GSW:"#1D428A",HOU:"#CE1141",IND:"#002D62",LAC:"#C8102E",LAL:"#552583",MEM:"#5D76A9",MIA:"#98002E",MIL:"#00471B",MIN:"#236192",NOP:"#0C2340",NYK:"#006BB6",OKC:"#007AC1",ORL:"#0077C0",PHI:"#006BB6",PHX:"#E56020",POR:"#E03A3E",SAC:"#5A2D81",SAS:"#000000",TOR:"#CE1141",UTA:"#002B5C",WAS:"#002B5C"};
+/* secondary team colors for row borders (reference style: e.g. Lakers rows outlined in gold) */
+const TEAM_COLORS2 = {ATL:"#C1D32F",BOS:"#FFFFFF",BKN:"#FFFFFF",CHA:"#00788C",CHI:"#FFFFFF",CLE:"#FDBB30",DAL:"#B8C4CA",DEN:"#FEC524",DET:"#1D42BA",GSW:"#FFC72C",HOU:"#C4CED4",IND:"#FDBB30",LAC:"#1D428A",LAL:"#FDB927",MEM:"#F5B112",MIA:"#F9A01B",MIL:"#EEE1C6",MIN:"#78BE20",NOP:"#85714D",NYK:"#F58426",OKC:"#EF3B24",ORL:"#C4CED4",PHI:"#ED174C",PHX:"#1D1160",POR:"#FFFFFF",SAC:"#63727A",SAS:"#C4CED4",TOR:"#A1A1A4",UTA:"#F9A01B",WAS:"#E31837"};
 const DEFAULT_COLOR = "#5b5b5b";
 
 const norm = s => (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
@@ -472,6 +474,7 @@ function resolveRow(row,missing){
   row._logo = teamObj ? RAW+"/teams/logos/current/svg/"+teamObj.team_id+".svg" : null;
   row._sub = customSub!==null ? customSub : (teamObj?teamObj.full_name:(abbrev||""));
   row._color = (abbrev&&TEAM_COLORS[abbrev])||DEFAULT_COLOR;
+  row._abbrev = abbrev||null;
 }
 function render(){
   const rows=parseRows($("inRows").value); const missing=[];
@@ -483,7 +486,7 @@ function render(){
   p.appendChild(head);
   const wrap=document.createElement("div"); wrap.className="grows";
   rows.forEach(row=>{
-    const color=row._color, border=lum(color)<0.08?"#8a8d90":color, tint=mix(color,"#232323",0.26);
+    const color=row._color, border=(row._abbrev&&TEAM_COLORS2[row._abbrev])||(lum(color)<0.08?"#8a8d90":mix(color,"#ffffff",0.5)), tint=mix(color,"#2b2b2b",0.15);
     const el=document.createElement("div"); el.className="grow"; el.style.background=tint; el.style.borderColor=border;
     const logoTag=row._logo?'<img class="logo" crossorigin="anonymous" src="'+row._logo+'" alt="">':"";
     el.innerHTML='<div class="media">'+logoTag+'<img class="shot" crossorigin="anonymous" src="'+row._shot+'" onerror="this.onerror=null;this.src=\''+SILHOUETTE+'\';" alt=""></div>'+
@@ -624,7 +627,7 @@ $("dl").addEventListener("click",async()=>{
   const _orig=_logos.map(im=>im.getAttribute("src"));
   await Promise.all(_logos.map(async im=>{ const u=im.getAttribute("src"); if(u && /\.svg(\?|$)/i.test(u)){ try{ im.src=await svgUrlToPng(u,200); }catch(e){} } }));
   await Promise.all(_logos.map(im=>im.complete?Promise.resolve():new Promise(r=>{im.onload=im.onerror=r;})));
-  try{ const c=await html2canvas($("poster"),{scale:SCALE,useCORS:true,backgroundColor:"#232323",logging:false});
+  try{ const c=await html2canvas($("poster"),{scale:SCALE,useCORS:true,backgroundColor:"#2b2b2b",logging:false});
     const a=document.createElement("a"); a.download="hoopshype-graphic.png"; a.href=c.toDataURL("image/png"); a.click();
   }catch(e){ alert("PNG export failed ("+e.message+")."); }
   _logos.forEach((im,i)=>{ if(_orig[i]!=null) im.src=_orig[i]; });
