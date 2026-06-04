@@ -127,7 +127,7 @@
   <h2>2. Headline and list</h2>
   <div class="field"><label>Headline</label><input id="inTitle" type="text" placeholder="e.g. Most points per game, 2025-26 season"></div>
   <div class="field"><label>Subline (optional)</label><input id="inSub" type="text"></div>
-  <div class="field"><label>List &mdash; <code>Name | Number</code> per line. Add <code>| TEAM</code> to force a team, or <code>| any text</code> for a custom line under the name. Add <code>| TEAM | photo-url</code> for legends not in the headshot repo.</label><textarea id="inRows" spellcheck="false"></textarea></div>
+  <div class="field"><label>List &mdash; <code>Name | Number</code> per line. After the number you can add, in any order: <code>| TEAM</code> (forces logo+color), <code>| any text</code> (custom line under the name, e.g. dates), <code>| photo-url</code>. Example: <code>Robert Horry | 220 | SAS | 1993-04-29 to 2007-05-14</code>.</label><textarea id="inRows" spellcheck="false"></textarea></div>
   <div class="field"><label>Footer credit</label><input id="inFooter" type="text" value="HoopsHype Research"></div>
   <div class="row-actions">
     <button class="btn gold" id="gen">Generate graphic</button>
@@ -177,7 +177,8 @@ const hx = h => h.replace("#","").match(/.{2}/g).map(x=>parseInt(x,16));
 const lum = h => { const c=hx(h); return (0.2126*c[0]+0.7152*c[1]+0.0722*c[2])/255; };
 function mix(c1,bg,t){const a=hx(c1),b=hx(bg);const c=a.map((v,i)=>Math.round(b[i]*(1-t)+v*t));return "rgb("+c[0]+","+c[1]+","+c[2]+")";}
 
-let SCALE=2, PLAYER_IDX={}, TEAM_IDX={}, INDEX_OK=false;
+let SCALE=2, PLAYER_IDX={}, TEAM_IDX={}, LEGEND_IDX={}, INDEX_OK=false;
+const LEGEND_SHOT_BASE="https://cdn.nba.com/headshots/nba/latest/1040x760/";  /* official NBA headshots by person id; swap to a proxy URL if CORS blocks it */
 const MANUAL_PHOTOS={};  /* norm(name) -> data URL of a photo uploaded in this session */
 const SAVED_SHOTS={};    /* norm(name) -> data URL, loaded from IndexedDB at boot (persists across sessions on this browser) */
 const $=id=>document.getElementById(id);
@@ -191,7 +192,7 @@ const $=id=>document.getElementById(id);
 const LEGEND_TEAMS = {
   // screenshot cases
   "shaquille o'neal":"LAL","kobe bryant":"LAL","jimmy butler":"GSW","clyde drexler":"POR",
-  "hakeem olajuwon":"HOU","scottie pippen":"CHI","john havlicek":"BOS","lionel hollins":"POR",
+  "hakeem olajuwon":"HOU","scottie pippen":"CHI","john havlicek":"BOS","lionel hollins":"POR","robert horry":"LAL",
   // all-time greats
   "kareem abdul-jabbar":"LAL","michael jordan":"CHI","magic johnson":"LAL","larry bird":"BOS",
   "bill russell":"BOS","wilt chamberlain":"GSW","jerry west":"LAL","elgin baylor":"LAL",
@@ -321,7 +322,7 @@ async function reframeShots(){
     try{ const framed=await frameShot(orig); if(framed!==orig){ im.src=framed; } im.dataset.framed="1"; }catch(e){}
   }));
 }
-function fileToImage(srcUrl){ return new Promise((res,rej)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=()=>rej(new Error("decode failed")); im.src=srcUrl; }); }
+function fileToImage(srcUrl){ return new Promise((res,rej)=>{ const im=new Image(); if(!/^data:/i.test(srcUrl)) im.crossOrigin="anonymous"; im.onload=()=>res(im); im.onerror=()=>rej(new Error("decode failed")); im.src=srcUrl; }); }
 async function normalizeToPng(file){
   const url=await blobToDataURL(file);
   const im=await fileToImage(url);
@@ -448,28 +449,33 @@ $("ocrBtn").addEventListener("click",async()=>{
 function parseRows(text){
   return text.split("\n").map(l=>l.trim()).filter(l=>l&&!l.startsWith("#")).map(l=>{
     const p=l.split("|").map(s=>s.trim());
-    return {name:p[0]||"",value:p[1]||"",team:p[2]||"",img:p[3]||""};
+    return {name:p[0]||"",value:p[1]||"",extras:p.slice(2).filter(Boolean)};
   }).filter(r=>r.name);
 }
 function resolveRow(row,missing){
   const player=PLAYER_IDX[norm(row.name)]||null;
   let abbrev=null,teamObj=null,customSub=null;
-  if(row.team){
-    teamObj=TEAM_IDX[row.team.toUpperCase()]||TEAM_IDX[norm(row.team)]||null;
-    if(teamObj){ abbrev=teamObj.abbrev; }            // parts[2] is a real team -> full team treatment
-    else { customSub=row.team; }                     // parts[2] is free text -> use it verbatim as the subtitle
-  }
+  // fields after the number can be, in any order: a team (forces logo+color), a photo URL,
+  // or free text (custom line under the name, e.g. "1993-04-29 to 2007-05-14")
+  row.img="";
+  (row.extras||[]).forEach(x=>{
+    const t=TEAM_IDX[x.toUpperCase()]||TEAM_IDX[norm(x)]||null;
+    if(t && !teamObj){ teamObj=t; abbrev=t.abbrev; }
+    else if(/^(https?:|data:)/i.test(x) && !row.img){ row.img=x; }
+    else if(customSub===null){ customSub=x; }
+  });
   // resolve a default team when none was forced as a team: active player from repo, else legend map
   if(!teamObj){
     if(player){ abbrev=player.team_abbrev; teamObj=TEAM_IDX[abbrev]||null; }
     else if(LEGEND_TEAMS[norm(row.name)]){ abbrev=LEGEND_TEAMS[norm(row.name)]; teamObj=TEAM_IDX[abbrev]||null; }
   }
   // headshot precedence: explicit url > saved upload (persisted) > this-session upload > repo > silhouette
-  row._fromSaved=false;
+  row._fromSaved=false; row._fromCdn=false;
   if(row.img) row._shot=row.img;
   else if(SAVED_SHOTS[norm(row.name)]){ row._shot=SAVED_SHOTS[norm(row.name)]; row._fromSaved=true; }
   else if(MANUAL_PHOTOS[norm(row.name)]){ row._shot=MANUAL_PHOTOS[norm(row.name)]; row._fromSaved=true; }
   else if(player) row._shot=RAW+"/players/headshots/face/"+player.headshot.filename;
+  else if(LEGEND_IDX[norm(row.name)]){ row._shot=LEGEND_SHOT_BASE+LEGEND_IDX[norm(row.name)]+".png"; row._fromCdn=true; }
   else { row._shot=SILHOUETTE; missing.push(row.name); }
   row._logo = teamObj ? RAW+"/teams/logos/current/svg/"+teamObj.team_id+".svg" : null;
   row._sub = customSub!==null ? customSub : (teamObj?teamObj.full_name:(abbrev||""));
@@ -507,7 +513,7 @@ function render(){
   // players the panel should let you manage: those with no headshot (missing) PLUS those
   // already using a saved upload (so you can re-cut or replace them even though they're not "missing")
   const editable=[];
-  rows.forEach(row=>{ if(missing.includes(row.name)||row._fromSaved){ if(!editable.includes(row.name)) editable.push(row.name); } });
+  rows.forEach(row=>{ if(missing.includes(row.name)||row._fromSaved||row._fromCdn){ if(!editable.includes(row.name)) editable.push(row.name); } });
   renderMissing(missing, rows, editable);
 }
 
@@ -589,6 +595,8 @@ async function loadIndex(){
     });
     tj.forEach(t=>{TEAM_IDX[t.abbrev]=t;TEAM_IDX[norm(t.full_name)]=t;});
     INDEX_OK=true;
+    /* all-time player ids (legends.json) enable automatic headshots for retired players */
+    fetch(RAW+"/players/metadata/legends.json").then(r=>r.ok?r.json():{}).then(j=>{ Object.assign(LEGEND_IDX,j); render(); }).catch(()=>{});
   }catch(e){ INDEX_OK=false; }
 }
 /* shrink the headline so it always fits on one line */
