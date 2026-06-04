@@ -178,7 +178,7 @@ const lum = h => { const c=hx(h); return (0.2126*c[0]+0.7152*c[1]+0.0722*c[2])/2
 function mix(c1,bg,t){const a=hx(c1),b=hx(bg);const c=a.map((v,i)=>Math.round(b[i]*(1-t)+v*t));return "rgb("+c[0]+","+c[1]+","+c[2]+")";}
 
 let SCALE=2, PLAYER_IDX={}, TEAM_IDX={}, LEGEND_IDX={}, INDEX_OK=false;
-const LEGEND_SHOT_BASE="https://cdn.nba.com/headshots/nba/latest/1040x760/";  /* official NBA headshots by person id; swap to a proxy URL if CORS blocks it */
+const LEGEND_SHOT_BASE="https://nba-headshot-proxy.thejorgesierra.workers.dev/";  /* CORS proxy in front of cdn.nba.com official headshots (see nba-headshot-proxy worker) */
 const MANUAL_PHOTOS={};  /* norm(name) -> data URL of a photo uploaded in this session */
 const SAVED_SHOTS={};    /* norm(name) -> data URL, loaded from IndexedDB at boot (persists across sessions on this browser) */
 const $=id=>document.getElementById(id);
@@ -386,14 +386,31 @@ function guessCols(parsed){
 function buildMapper(parsed, mapperEl){
   const g=guessCols(parsed);
   const opt=(sel)=>parsed.headers.map((h,i)=>'<option value="'+i+'"'+(i===sel?" selected":"")+'>'+(h||("Column "+(i+1)))+'</option>').join("");
+  const optNone=(sel)=>'<option value="-1"'+(sel<0?" selected":"")+'>(none)</option>'+opt(sel);
+  // guess the optional columns from header names
+  const hdr=parsed.headers.map(h=>(h||"").toLowerCase());
+  const teamGuess=hdr.findIndex(h=>/team/.test(h));
+  const sub1Guess=hdr.findIndex(h=>/start|first|from|debut/.test(h));
+  const sub2Guess=hdr.findIndex(h=>/end|last|final/.test(h));
   mapperEl.innerHTML =
     '<div class="field"><label>Player name column</label><select class="mName">'+opt(g.nameCol)+'</select></div>'+
     '<div class="field"><label>Number column</label><select class="mVal">'+opt(g.valCol)+'</select></div>'+
+    '<div class="field"><label>Team column (optional)</label><select class="mTeam">'+optNone(teamGuess)+'</select></div>'+
+    '<div class="field"><label>Line under name (optional)</label><select class="mSub1">'+optNone(sub1Guess)+'</select></div>'+
+    '<div class="field"><label>&hellip;joined with (optional)</label><select class="mSub2">'+optNone(sub2Guess)+'</select></div>'+
     '<div style="display:flex;align-items:flex-end"><button class="btn gold mApply">Add to list</button></div>';
   mapperEl.classList.add("show");
   mapperEl.querySelector(".mApply").addEventListener("click",()=>{
     const nC=+mapperEl.querySelector(".mName").value, vC=+mapperEl.querySelector(".mVal").value;
-    const lines=parsed.body.filter(r=>(r[nC]||"").trim()).map(r=>(r[nC]||"").trim()+" | "+(r[vC]||"").trim());
+    const tC=+mapperEl.querySelector(".mTeam").value, s1=+mapperEl.querySelector(".mSub1").value, s2=+mapperEl.querySelector(".mSub2").value;
+    const lines=parsed.body.filter(r=>(r[nC]||"").trim()).map(r=>{
+      const parts=[(r[nC]||"").trim(), (r[vC]||"").trim()];
+      if(tC>=0 && (r[tC]||"").trim()) parts.push((r[tC]||"").trim());
+      let sub = s1>=0 ? (r[s1]||"").trim() : "";
+      if(s2>=0 && (r[s2]||"").trim()) sub = sub ? sub+" to "+(r[s2]||"").trim() : (r[s2]||"").trim();
+      if(sub) parts.push(sub);
+      return parts.join(" | ");
+    });
     $("inRows").value=lines.join("\n");
     render();
     document.querySelector('.tab[data-tab="type"]').click();
