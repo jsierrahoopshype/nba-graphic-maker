@@ -69,8 +69,8 @@
   .info{flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;padding:0 18px;min-width:0}
   .info .name{color:var(--name);font-weight:700;font-size:44px;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 2px 4px rgba(0,0,0,.4)}
   .info .sub{color:var(--rowsub);font-weight:400;font-size:22px;margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .num{flex:0 0 172px;display:flex;align-items:center;justify-content:center}
-  .num span{font-weight:700;font-size:64px;color:#fff;letter-spacing:-1px;-webkit-text-stroke:2.5px rgba(0,0,0,.6);paint-order:stroke fill;text-shadow:0 2px 4px rgba(0,0,0,.4)}
+  .num{flex:0 0 172px;display:flex;align-items:center;justify-content:center;padding:0 10px;box-sizing:border-box}
+  .num span{font-weight:700;font-size:64px;line-height:1;color:#fff;letter-spacing:-1px;white-space:nowrap;-webkit-text-stroke:2.5px rgba(0,0,0,.6);paint-order:stroke fill;text-shadow:0 2px 4px rgba(0,0,0,.4)}
   .foot{display:flex;align-items:center;justify-content:space-between;margin-top:16px;padding:2px 2px 0}
   .foot img.hhlogo{height:30px;width:auto;display:block}
   .foot .credit{color:var(--footer);font-weight:600;font-size:18px}
@@ -212,6 +212,7 @@ const LEGEND_TEAMS = {
   "bernard king":"NYK","dave debusschere":"NYK","sam jones":"BOS","kevin johnson":"PHX",
   "shawn kemp":"GSW","penny hardaway":"ORL","ben wallace":"DET","rasheed wallace":"DET",
   "lamarcus aldridge":"POR","klay thompson":"GSW","kevin love":"CLE","joakim noah":"CHI",
+  "wesley matthews":"DAL","brad miller":"SAC","robert covington":"PHI","brandon clarke":"MEM",
   "andre iguodala":"GSW","tony allen":"MEM","marc gasol":"MEM","zach randolph":"MEM",
   "joe johnson":"ATL","al horford":"ATL","paul millsap":"ATL","kyle lowry":"TOR",
   "demar derozan":"TOR","goran dragic":"MIA","hassan whiteside":"MIA","andrew bogut":"GSW",
@@ -541,6 +542,7 @@ function render(){
   foot.querySelector(".credit").textContent=$("inFooter").value; p.appendChild(foot);
   $("dl").disabled=false; meta.textContent=rows.length+" rows - 1080px -> "+(1080*SCALE)+"px PNG";
   fitTitle();
+  fitNums();
   reframeShots();
   banner.style.display="none"; banner.className="banner";
   if(!INDEX_OK){ banner.style.display="block"; banner.innerHTML="Headshots/logos could not load from <b>raw.githubusercontent.com</b>. If this is the inline preview, that is expected: download the file and open it in your browser."; }
@@ -640,6 +642,15 @@ function fitTitle(){
   const avail=h.parentElement.clientWidth;
   while(fs>min && h.scrollWidth>avail){ fs-=1; h.style.fontSize=fs+"px"; }
 }
+/* shrink each number to one shared font size so the value column lines up across rows
+   regardless of digit count ($226,217,862 vs $87,800,795) */
+function fitNums(){
+  const spans=[...document.querySelectorAll("#poster .num span")]; if(!spans.length) return;
+  const max=64, min=22; let fs=max;
+  spans.forEach(s=>s.style.fontSize=fs+"px");
+  const fits=()=>spans.every(s=>s.scrollWidth<=s.parentElement.clientWidth);
+  while(fs>min && !fits()){ fs-=1; spans.forEach(s=>s.style.fontSize=fs+"px"); }
+}
 /* convert an external SVG url to a PNG data URL so html2canvas can render it */
 const _logoPngCache={};
 async function svgUrlToPng(url,size){
@@ -659,7 +670,7 @@ async function svgUrlToPng(url,size){
   URL.revokeObjectURL(burl);
   const out=cv.toDataURL("image/png"); _logoPngCache[url]=out; return out;
 }
-$("gen").addEventListener("click",()=>{ render(); fitTitle(); });
+$("gen").addEventListener("click",()=>{ render(); fitTitle(); fitNums(); });
 $("dl").addEventListener("click",async()=>{
   const btn=$("dl"); btn.disabled=true; btn.textContent="Rendering...";
   await reframeShots();   // ensure every shot is framed by the single rule before exporting
