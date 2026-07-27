@@ -277,10 +277,9 @@ async function cutoutToDataURL(fileOrBlob){
    (which fill ~100% width / ~93% height with the shoulders at the bottom edge).
    Cached by source URL so it only runs once per image. */
 const _frameCache={};
-async function frameShot(srcUrl, simple){
+async function frameShot(srcUrl){
   if(srcUrl===SILHOUETTE) return srcUrl;            // leave the fallback silhouette alone
-  const ckey=(simple?"S|":"")+srcUrl;
-  if(_frameCache[ckey]) return _frameCache[ckey];
+  if(_frameCache[srcUrl]) return _frameCache[srcUrl];
   const im=await fileToImage(srcUrl);
   const W=im.naturalWidth||im.width, H=im.naturalHeight||im.height;
   if(!W||!H) return srcUrl;
@@ -313,7 +312,7 @@ async function frameShot(srcUrl, simple){
   }
   const HEAD_RATIO=0.60, TOP_MARGIN=0.04;            // Kevin Love reference: head = 60% of frame width
   let side,dx,dy;
-  if(!simple && headW>bw*0.15){
+  if(headW>bw*0.15){
     // head found: size the frame off the head so heads match across all rows
     const headCx=(rowsMin[headRowY]+rowsMax[headRowY])/2;
     side=Math.round(headW/HEAD_RATIO);
@@ -335,7 +334,7 @@ async function frameShot(srcUrl, simple){
   const cv=document.createElement("canvas"); cv.width=side; cv.height=side;
   const ctx=cv.getContext("2d");
   ctx.drawImage(im,dx,dy);                           // translate the full image; the canvas clips the rest
-  const out=cv.toDataURL("image/png"); _frameCache[ckey]=out; return out;
+  const out=cv.toDataURL("image/png"); _frameCache[srcUrl]=out; return out;
 }
 /* reframe every shot in the poster through the single rule above */
 /* true when an image has an opaque background (NBA proxy headshots are sometimes a gray
@@ -364,7 +363,7 @@ async function reframeShots(){
       if(im.dataset.cdn==="1" && await isOpaqueImage(orig)){
         try{ src=await cutoutToDataURL(orig); }catch(e){ src=orig; }
       }
-      const framed=await frameShot(src, im.dataset.saved==="1");
+      const framed=await frameShot(src);
       if(framed!==orig){ im.src=framed; }
       im.dataset.framed="1";
     }catch(e){ im.dataset.framed="1"; }
@@ -560,7 +559,7 @@ function render(){
     const color=row._color, border=(row._abbrev&&TEAM_COLORS2[row._abbrev])||(lum(color)<0.08?"#8a8d90":mix(color,"#ffffff",0.5)), tint=mix(color,"#2b2b2b",0.15);
     const el=document.createElement("div"); el.className="grow"; el.style.background=tint; el.style.borderColor=border;
     const logoTag=row._logo?'<img class="logo" crossorigin="anonymous" src="'+row._logo+'" alt="">':"";
-    el.innerHTML='<div class="media">'+logoTag+'<img class="shot" crossorigin="anonymous"'+(row._fromCdn?' data-cdn="1"':'')+(row._fromSaved?' data-saved="1"':'')+' src="'+row._shot+'" onerror="this.onerror=null;this.src=\''+SILHOUETTE+'\';" alt=""></div>'+
+    el.innerHTML='<div class="media">'+logoTag+'<img class="shot" crossorigin="anonymous"'+(row._fromCdn?' data-cdn="1"':'')+' src="'+row._shot+'" onerror="this.onerror=null;this.src=\''+SILHOUETTE+'\';" alt=""></div>'+
       '<div class="info"><div class="name"></div><div class="sub"></div></div>'+
       '<div class="num" style="background:'+color+'"><span></span></div>';
     el.querySelector(".name").textContent=row.name; el.querySelector(".sub").textContent=row._sub; el.querySelector(".num span").textContent=row.value;
